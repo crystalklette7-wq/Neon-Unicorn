@@ -1,0 +1,289 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Unicorn</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#ff00ff">
+
+<style>
+body{margin:0;background:black;overflow:hidden;font-family:system-ui}
+canvas{display:block}
+
+#marquee{
+ position:fixed;
+ top:0;left:0;right:0;bottom:0;
+ background:black;
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+ justify-content:center;
+ z-index:10;
+}
+
+#marquee img{
+ max-width:100%;
+ max-height:60%;
+ filter:drop-shadow(0 0 40px #ff00ff);
+}
+
+#start{
+ margin-top:20px;
+ font-size:18px;
+ font-weight:900;
+ background:linear-gradient(90deg,#ff004c,#ffcc00,#00ff99,#00ccff,#aa66ff,#ff004c);
+ background-size:400% 400%;
+ -webkit-background-clip:text;
+ -webkit-text-fill-color:transparent;
+ animation:rainbow 4s linear infinite;
+}
+
+@keyframes rainbow{
+ 0%{background-position:0% 50%}
+ 100%{background-position:400% 50%}
+}
+
+#hud{
+ position:fixed;top:10px;left:10px;
+ font-weight:900;font-size:14px;
+ display:none;
+ background:linear-gradient(90deg,#ff004c,#ffcc00,#00ff99,#00ccff,#aa66ff,#ff004c);
+ background-size:400% 400%;
+ -webkit-background-clip:text;
+ -webkit-text-fill-color:transparent;
+ animation:rainbow 4s linear infinite;
+}
+
+</style>
+</head>
+<body>
+
+<div id="marquee">
+  <img src="A_digital_artwork_in_a_retro_arcade_style_features.png" alt="Neon Unicorn Marquee">
+  <div id="start">TAP TO START</div>
+</div>
+
+<div id="hud">
+ SCORE: <span id="score">0</span> |
+ LIVES: <span id="lives">3</span>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+function resize(){c.width=innerWidth;c.height=innerHeight}
+resize(); addEventListener('resize',resize);
+
+let started=false,score=0,lives=3;
+// COMBO + ATTRACT MODE
+let combo=0, attract=true, attractTimer=0;
+
+// Pickup sound
+const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+function beep(freq=600,dur=0.08){
+ const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+ o.frequency.value=freq;o.type="square";
+ o.connect(g);g.connect(audioCtx.destination);
+ g.gain.value=0.05;o.start();
+ setTimeout(()=>o.stop(),dur*1000);
+}
+
+const unicorn={x:c.width/2,y:c.height-80,size:24};
+const bullets=[],enemies=[];
+// EXTRA SYSTEMS
+const powerups=[];
+
+const powerTypes = [
+ {type:"spread", color:"#00ffff"},
+ {type:"laser", color:"#ff00ff"},
+ {type:"shield", color:"#00ff66"},
+ {type:"bonus", color:"#ffff00"}
+];
+
+let power=1, bossTimer=0;
+
+
+function spawnPower(x,y){
+ const p = powerTypes[Math.floor(Math.random()*powerTypes.length)];
+ powerups.push({x,y,vy:2,type:p.type,color:p.color});
+}
+
+
+
+addEventListener('click',start);
+addEventListener('touchstart',start,{once:true});
+
+
+function start(){
+ attract=false;
+
+ if(started) return;
+ started=true;
+ marquee.style.display="none";
+ hud.style.display="block";
+}
+
+addEventListener('mousemove',e=>unicorn.x=e.clientX);
+addEventListener('touchmove',e=>{unicorn.x=e.touches[0].clientX;e.preventDefault()},{passive:false});
+
+function glow(x,y,r,color){
+ ctx.shadowBlur=40;ctx.shadowColor=color;
+ ctx.fillStyle=color;
+ ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+ ctx.shadowBlur=0;
+}
+
+setInterval(()=>{if(started)bullets.push({x:unicorn.x,y:unicorn.y});},150);
+
+const enemyColors = ["#ff0033","#00ffff","#ffff00","#ff00ff","#00ff66","#ff6600","#66ccff"];
+setInterval(()=>{
+ if(started){
+   enemies.push({type:Math.random()<0.2?'zig':Math.random()<0.1?'wave':'normal',
+     x:Math.random()*c.width,
+     y:-40,
+     size:14+Math.random()*16,
+     speed:2+Math.random()*3,
+     color:enemyColors[Math.floor(Math.random()*enemyColors.length)]
+   });
+ }
+},500);
+
+
+function update(){
+ ctx.clearRect(0,0,c.width,c.height);
+ if(!started){requestAnimationFrame(update);return;}
+
+ glow(unicorn.x,unicorn.y,unicorn.size,"#ff00ff");
+
+ 
+bullets.forEach((b,i)=>{
+ for(let p=0;p<power;p++){
+
+  b.y-=12; glow(b.x,b.y,4,"#0ff");
+  
+ }
+ if(b.y<0)bullets.splice(i,1);
+
+ });
+
+ enemies.forEach((e,ei)=>{
+  
+if(e.type==='zig'){e.x+=Math.sin(e.y/20)*3;}
+if(e.type==='wave'){e.x+=Math.cos(e.y/25)*4;}
+e.y+=e.speed;
+glow(e.x,e.y,e.size,e.color);
+
+  if(e.y>c.height){enemies.splice(ei,1);lives--;}
+  bullets.forEach((b,bi)=>{
+   if(Math.hypot(b.x-e.x,b.y-e.y)<e.size){
+    enemies.splice(ei,1); bullets.splice(bi,1); score+=100; if(Math.random()<0.15)spawnPower(e.x,e.y);
+   }
+  });
+ });
+
+ score.textContent=score;
+ lives.textContent=lives;
+
+ if(lives<=0){
+  ctx.fillStyle="#fff";ctx.font="42px system-ui";
+  
+ctx.fillText("GAME OVER",
+,c.width/2-120,c.height/2);
+  return;
+ }
+
+ requestAnimationFrame(update);
+}
+update();
+</script>
+
+</body>
+</html>
+
+// POWERUPS
+
+function drawPowerups(){
+ powerups.forEach((p,i)=>{
+  p.y+=p.vy;
+  glow(p.x,p.y,14,p.color);
+  if(Math.hypot(p.x-unicorn.x,p.y-unicorn.y)<28){
+    if(p.type==='spread') power=Math.min(power+1,4);
+    if(p.type==='laser') bullets.push({x:unicorn.x,y:unicorn.y-40});
+    if(p.type==='shield') lives++;
+    if(p.type==='bonus') score+=500;
+    powerups.splice(i,1);
+  }
+ });
+}
+
+
+// BOSS
+function spawnBoss(){
+ enemies.push({x:c.width/2,y:-80,size:60,speed:1,color:"#ffffff",type:"boss",hp:30});
+}
+
+setInterval(()=>{
+ if(started){bossTimer++; if(bossTimer%20===0)spawnBoss();}
+},1000);
+
+const oldUpdate = update;
+update = function(){
+ drawPowerups();
+ oldUpdate();
+}
+
+// ATTRACT LOOP
+setInterval(()=>{
+ if(!started && attract){
+  attractTimer++;
+  unicorn.x = c.width/2 + Math.sin(attractTimer/20)*200;
+ }
+},100);
+
+// ENHANCED POWERUP EFFECTS
+function powerEffect(type,color){
+ beep(400+Math.random()*400);
+ for(let i=0;i<30;i++)
+  particles.push({x:unicorn.x,y:unicorn.y,dx:(Math.random()-.5)*12,dy:(Math.random()-.5)*12,life:30,color});
+}
+
+// OVERRIDE drawPowerups
+const oldDrawPowerups = drawPowerups;
+drawPowerups = function(){
+ powerups.forEach((p,i)=>{
+  p.y+=p.vy;
+  glow(p.x,p.y,16,p.color);
+  if(Math.hypot(p.x-unicorn.x,p.y-unicorn.y)<30){
+    combo++;
+    powerEffect(p.type,p.color);
+    if(p.type==='spread') power=Math.min(power+1,4);
+    if(p.type==='laser') for(let i=0;i<5;i++)bullets.push({x:unicorn.x+(i-2)*6,y:unicorn.y-20});
+    if(p.type==='shield') lives++;
+    if(p.type==='bonus') score+=1000;
+    powerups.splice(i,1);
+  }
+ });
+}
+
+// COLOR PARTICLES
+const oldExplode = explode;
+explode = function(x,y){
+ oldExplode(x,y);
+ for(let i=0;i<15;i++)
+  particles.push({x,y,dx:(Math.random()-.5)*10,dy:(Math.random()-.5)*10,life:40,color:enemyColors[Math.floor(Math.random()*enemyColors.length)]});
+}
+
+// DRAW COLORED PARTICLES
+const oldUpdate2 = update;
+update = function(){
+ ctx.clearRect(0,0,c.width,c.height);
+ particles.forEach((p,i)=>{
+  p.x+=p.dx;p.y+=p.dy;p.life--;
+  ctx.fillStyle=p.color||"#fff";
+  ctx.fillRect(p.x,p.y,3,3);
+  if(p.life<=0)particles.splice(i,1);
+ });
+ oldUpdate2();
+}
